@@ -186,6 +186,26 @@ async function getPipe() {
   return pipe;
 }
 
+// transformers.js не отдаёт символьные offset'ы для этого токенизатора —
+// восстанавливаем start/end из поля word последовательным проходом по тексту.
+function attachOffsets(tokens, text) {
+  if (tokens.some((t) => typeof t.start === "number")) return;  // offset'ы уже есть
+  let cursor = 0;
+  for (const tk of tokens) {
+    if (tk.word == null) { tk.start = tk.end = null; continue; }
+    let idx = text.indexOf(tk.word, cursor);
+    if (idx === -1) {
+      const wt = tk.word.replace(/^\s+/, "");
+      idx = text.indexOf(wt, cursor);
+      if (idx === -1) { tk.start = tk.end = null; continue; }
+      tk.start = idx; tk.end = idx + wt.length;
+    } else {
+      tk.start = idx; tk.end = idx + tk.word.length;
+    }
+    cursor = tk.end;
+  }
+}
+
 // BIO-декодинг с порогом — повторяет infer.py _decode_bio.
 function decodeBIO(tokens) {
   const ents = [];
@@ -243,6 +263,7 @@ async function runDetect(text) {
   const p = await getPipe();
   setStatus("Анализ …");
   const tokens = await p(text, { ignore_labels: [] });
+  attachOffsets(tokens, text);
   let ents = decodeBIO(tokens);
   ents = ents.map((e) => {
     let [s, en] = expandToWord(text, e.start, e.end);
