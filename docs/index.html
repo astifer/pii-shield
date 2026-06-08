@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PII Shield — поиск и маскирование персональных данных</title>
+<style>
+  :root {
+    --bg: #0f1420; --panel: #171d2b; --panel-2: #1e2636; --border: #2a3346;
+    --text: #e6ebf5; --muted: #8b97ad; --accent: #5b8cff; --accent-2: #3f6fe0;
+    --danger: #ff6b6b; --ok: #3ddc84; --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(1200px 600px at 80% -10%, #1c2740 0%, var(--bg) 55%);
+    color: var(--text); line-height: 1.5; min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 32px 20px 64px; }
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+  .logo {
+    width: 42px; height: 42px; border-radius: 11px; flex: none; display: grid; place-items: center;
+    font-size: 22px; background: linear-gradient(135deg, var(--accent), #7b5bff);
+    box-shadow: 0 6px 20px rgba(91,140,255,.35);
+  }
+  h1 { font-size: 22px; margin: 0; letter-spacing: .2px; }
+  .sub { color: var(--muted); font-size: 13.5px; margin: 2px 0 24px; }
+  .sub b { color: var(--text); font-weight: 600; }
+
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
+  textarea {
+    width: 100%; min-height: 170px; resize: vertical; background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; font-size: 15px;
+    line-height: 1.55; font-family: inherit; outline: none;
+  }
+  textarea:focus { border-color: var(--accent); }
+
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px; }
+  button {
+    font: inherit; cursor: pointer; border-radius: 9px; padding: 10px 16px; color: var(--text);
+    border: 1px solid var(--border); background: var(--panel-2);
+    transition: transform .05s ease, background .15s ease, border-color .15s ease;
+  }
+  button:hover { border-color: var(--accent); }
+  button:active { transform: translateY(1px); }
+  button.primary { background: var(--accent-2); border-color: var(--accent-2); font-weight: 600; }
+  button.primary:hover { background: var(--accent); }
+  button:disabled { opacity: .5; cursor: progress; }
+  .spacer { flex: 1; }
+  .link { background: none; border: none; color: var(--muted); padding: 8px; }
+  .link:hover { color: var(--text); }
+
+  .status { color: var(--muted); font-size: 13px; min-height: 18px; margin: 14px 2px 0; }
+  .status.err { color: var(--danger); }
+
+  .bar { height: 6px; border-radius: 4px; background: var(--panel-2); overflow: hidden; margin: 12px 2px 0; display: none; }
+  .bar > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), #7b5bff); transition: width .2s ease; }
+
+  .result { margin-top: 18px; display: none; }
+  .seg { display: inline-flex; background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px; padding: 3px; gap: 3px; margin-bottom: 14px; }
+  .seg button { border: none; background: transparent; padding: 7px 14px; border-radius: 7px; color: var(--muted); font-size: 13.5px; }
+  .seg button.active { background: var(--accent-2); color: #fff; }
+
+  .view { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px;
+          white-space: pre-wrap; word-wrap: break-word; font-size: 15px; line-height: 1.9; }
+  .view.mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 14px; line-height: 1.7; }
+
+  mark { border-radius: 5px; padding: 1px 4px; color: #fff; cursor: default; position: relative; white-space: pre-wrap; }
+  mark .tag { font-size: 10px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase; opacity: .9; margin-left: 5px; vertical-align: middle; }
+  .mask-tok { color: var(--accent); font-weight: 700; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; background: var(--panel-2);
+          border: 1px solid var(--border); border-radius: 20px; padding: 4px 11px 4px 8px; color: var(--muted); }
+  .dot { width: 11px; height: 11px; border-radius: 50%; flex: none; }
+  .chip b { color: var(--text); font-weight: 600; }
+  .count-pill { background: var(--border); color: var(--text); border-radius: 10px; font-size: 11px; padding: 0 7px; font-weight: 700; }
+
+  .empty { color: var(--muted); font-style: italic; }
+  .copied { color: var(--ok) !important; }
+  .notice { margin-top: 14px; font-size: 12.5px; color: var(--muted); background: var(--panel-2);
+            border: 1px dashed var(--border); border-radius: 10px; padding: 11px 13px; }
+  footer { margin-top: 28px; color: var(--muted); font-size: 12px; text-align: center; }
+  code { background: var(--panel-2); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">🛡️</div>
+    <div><h1>PII Shield</h1></div>
+  </header>
+  <div class="sub">
+    Находит <b>персональные данные</b> в русском тексте (30 типов: ФИО, телефоны, паспорта, карты,
+    СНИЛС, адреса и др.) с помощью дообученной NER-модели <b>ruModernBERT</b> и маскирует их.
+    Модель целиком работает <b>в вашем браузере</b> — текст никуда не отправляется.
+  </div>
+
+  <div class="card">
+    <textarea id="input" placeholder="Вставьте текст с персональными данными…"></textarea>
+    <div class="toolbar">
+      <button class="primary" id="detectBtn">Найти PII</button>
+      <button id="sampleBtn">Вставить пример</button>
+      <button class="link" id="clearBtn">Очистить</button>
+      <div class="spacer"></div>
+    </div>
+    <div class="bar" id="bar"><i id="barFill"></i></div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="result card" id="result">
+    <div class="seg" id="seg">
+      <button data-view="highlight" class="active">Подсветка</button>
+      <button data-view="masked">Маскированный текст</button>
+    </div>
+    <button id="copyBtn" style="float:right; display:none;">Копировать</button>
+    <div id="viewBox"></div>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <div class="notice" id="setupNotice" style="display:none;">
+    ⚠️ Модель не настроена: задайте <code>MODEL_ID</code> в начале <code>&lt;script&gt;</code> этого файла
+    (Hugging Face Hub repo с ONNX-весами). См. README → «Деплой на GitHub Pages».
+  </div>
+
+  <footer>Inference в браузере через transformers.js · текст не покидает устройство</footer>
+</div>
+
+<script type="module">
+import { pipeline, env } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3";
+
+// ── Настройка ──────────────────────────────────────────────────────────────
+// Repo id на Hugging Face Hub, куда загружены ONNX-веса (папка web_model/).
+// Пример: "astifer/pii-shield-onnx".  ЗАМЕНИТЕ перед деплоем.
+const MODEL_ID = "astifer/pii-shield-onnx";
+const THRESHOLD = 0.5;     // порог уверенности (как в infer.py)
+const DTYPE = "q8";        // загружать onnx/model_quantized.onnx (int8)
+// ─────────────────────────────────────────────────────────────────────────────
+
+env.allowLocalModels = false;   // грузим только с Hub, не ищем локально
+
+// Короткие маск-токены по типам сущностей (как ENTITY_SHORT в infer.py).
+const ENTITY_SHORT = {
+  "API ключи": "API-КЛЮЧ", "CVV/CVC": "CVV", "Email": "EMAIL",
+  "Водительское удостоверение": "ВОДИТ_УДОСТ", "Временное удостоверение личности": "ВРЕМ_УДОСТ",
+  "Гражданство и названия стран": "ГРАЖДАНСТВО", "Данные об автомобиле клиента": "АВТО",
+  "Данные об организации/юридическом лице (ИНН, КПП, ОГРН, БИК, адреса, расчётный счёт)": "ОРГАНИЗАЦИЯ",
+  "Дата окончания срока действия карты": "СРОК_КАРТЫ",
+  "Дата регистрации по месту жительства или пребывания": "ДАТА_РЕГ",
+  "Дата рождения": "ДАТА_РОЖД", "Имя держателя карты": "ДЕРЖАТЕЛЬ_КАРТЫ",
+  "Кодовые слова": "КОДОВОЕ_СЛОВО", "Место рождения": "МЕСТО_РОЖД", "Наименование банка": "БАНК",
+  "Номер банковского счета": "СЧЁТ", "Номер карты": "КАРТА", "Номер телефона": "ТЕЛЕФОН",
+  "Одноразовые коды": "OTP", "ПИН код": "PIN", "Пароли": "ПАРОЛЬ", "Паспортные данные": "ПАСПОРТ",
+  "Полный адрес": "АДРЕС", "Разрешение на работу / визу": "ВИЗА", "СНИЛС клиента": "СНИЛС",
+  "Сведения об ИНН": "ИНН", "Свидетельство о рождении": "СВИД_РОЖД",
+  "Серия и номер вида на жительство": "ВНЖ", "Содержимое магнитной полосы": "МАГ_ПОЛОСА", "ФИО": "ФИО",
+};
+const maskToken = (label) => "[" + (ENTITY_SHORT[label] || label) + "]";
+
+const STOP_CHARS = new Set([..." \t\n.,;:!?()[]{}\"'«»"]);
+
+const SAMPLE = `Здравствуйте! Меня зовут Иванова Мария Сергеевна, дата рождения 14.03.1991.
+Мой телефон +7 (916) 555-21-43, email maria.ivanova@example.com.
+Паспорт 4509 №123456 выдан 20.05.2015. СНИЛС 112-233-445 95.
+Карта 4276 3801 2345 6789, срок 08/27, CVV 123, держатель MARIA IVANOVA.
+Адрес регистрации: г. Москва, ул. Тверская, д. 10, кв. 5. ИНН 770812345678.`;
+
+const el = (id) => document.getElementById(id);
+let lastResult = null, currentView = "highlight", pipe = null;
+
+// ── transformers.js inference ────────────────────────────────────────────────
+async function getPipe() {
+  if (pipe) return pipe;
+  el("bar").style.display = "block";
+  setStatus("Загрузка модели (один раз, ~150 МБ) …");
+  pipe = await pipeline("token-classification", MODEL_ID, {
+    dtype: DTYPE,
+    progress_callback: (p) => {
+      if (p.status === "progress" && p.total) {
+        el("barFill").style.width = ((p.loaded / p.total) * 100).toFixed(1) + "%";
+      }
+    },
+  });
+  el("bar").style.display = "none";
+  return pipe;
+}
+
+// BIO-декодинг с порогом — повторяет infer.py _decode_bio.
+function decodeBIO(tokens) {
+  const ents = [];
+  let cur = null;
+  const flush = () => {
+    if (cur) {
+      ents.push({ start: cur.start, end: cur.end, label: cur.label,
+                  confidence: cur.confs.reduce((a, b) => a + b, 0) / cur.confs.length });
+      cur = null;
+    }
+  };
+  for (const tk of tokens) {
+    if (tk.start == null || tk.end == null) { flush(); continue; }  // спецтокены
+    let label = tk.score < THRESHOLD ? "O" : tk.entity;
+    if (label.startsWith("B-")) {
+      flush();
+      cur = { start: tk.start, end: tk.end, label: label.slice(2), confs: [tk.score] };
+    } else if (label.startsWith("I-")) {
+      const et = label.slice(2);
+      if (cur && cur.label === et) { cur.end = tk.end; cur.confs.push(tk.score); }
+      else { flush(); cur = { start: tk.start, end: tk.end, label: et, confs: [tk.score] }; }
+    } else { flush(); }
+  }
+  flush();
+  return ents;
+}
+
+// Чистка спанов — повторяет infer.py (_expand_to_word_boundaries, _trim, _resolve_overlaps).
+function expandToWord(text, s, e) {
+  while (s > 0 && !STOP_CHARS.has(text[s - 1])) s--;
+  while (e < text.length && !STOP_CHARS.has(text[e])) e++;
+  return [s, e];
+}
+function trim(text, s, e) {
+  while (s < e && STOP_CHARS.has(text[s])) s++;
+  while (e > s && STOP_CHARS.has(text[e - 1])) e--;
+  return [s, e];
+}
+function resolveOverlaps(ents) {
+  const ordered = [...ents].sort((a, b) =>
+    a.start - b.start || (b.end - b.start) - (a.end - a.start) || a.label.localeCompare(b.label));
+  const kept = [];
+  for (const cur of ordered) {
+    let clash = -1;
+    for (let i = 0; i < kept.length; i++) {
+      if (cur.start < kept[i].end && cur.end > kept[i].start) { clash = i; break; }
+    }
+    if (clash === -1) kept.push(cur);
+    else if ((cur.end - cur.start) > (kept[clash].end - kept[clash].start)) kept[clash] = cur;
+  }
+  return kept.sort((a, b) => a.start - b.start || a.end - b.end);
+}
+
+async function runDetect(text) {
+  const p = await getPipe();
+  setStatus("Анализ …");
+  const tokens = await p(text, { ignore_labels: [] });
+  let ents = decodeBIO(tokens);
+  ents = ents.map((e) => {
+    let [s, en] = expandToWord(text, e.start, e.end);
+    [s, en] = trim(text, s, en);
+    return { ...e, start: s, end: en };
+  }).filter((e) => e.end > e.start);
+  ents = resolveOverlaps(ents);
+
+  const entities = ents.map((e) => ({
+    start: e.start, end: e.end, label: e.label, mask: maskToken(e.label),
+    text: text.slice(e.start, e.end), confidence: e.confidence,
+  }));
+  const counts = {};
+  for (const e of entities) counts[e.label] = (counts[e.label] || 0) + 1;
+
+  // masked text
+  let masked = "", cursor = 0;
+  for (const e of entities) { masked += text.slice(cursor, e.start) + e.mask; cursor = e.end; }
+  masked += text.slice(cursor);
+
+  return { text, entities, masked, counts };
+}
+
+// ── рендеринг ────────────────────────────────────────────────────────────────
+function colorFor(label) {
+  let h = 0;
+  for (let i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) % 360;
+  return `hsl(${h}, 62%, 48%)`;
+}
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function renderHighlight(res) {
+  if (!res.entities.length)
+    return `<div class="view"><span class="empty">Персональные данные не найдены.</span></div>`;
+  const t = res.text; let html = "", cursor = 0;
+  for (const e of res.entities) {
+    html += escapeHtml(t.slice(cursor, e.start));
+    const c = colorFor(e.label);
+    html += `<mark style="background:${c}" title="${escapeHtml(e.label)} · ${(e.confidence * 100).toFixed(0)}%">`
+          + escapeHtml(t.slice(e.start, e.end))
+          + `<span class="tag">${escapeHtml(e.mask.replace(/[\[\]]/g, ""))}</span></mark>`;
+    cursor = e.end;
+  }
+  html += escapeHtml(t.slice(cursor));
+  return `<div class="view">${html}</div>`;
+}
+function renderMasked(res) {
+  if (!res.entities.length)
+    return `<div class="view mono"><span class="empty">Маскировать нечего — PII не найдены.</span></div>`;
+  const masked = escapeHtml(res.masked).replace(/\[([^\]]+)\]/g, '<span class="mask-tok">[$1]</span>');
+  return `<div class="view mono">${masked}</div>`;
+}
+function renderLegend(res) {
+  const counts = res.counts || {}, labels = Object.keys(counts).sort();
+  if (!labels.length) { el("legend").innerHTML = ""; return; }
+  const total = labels.reduce((s, l) => s + counts[l], 0);
+  let html = `<div class="chip"><b>Найдено: ${total}</b></div>`;
+  for (const l of labels)
+    html += `<div class="chip"><span class="dot" style="background:${colorFor(l)}"></span>`
+          + `<b>${escapeHtml(l)}</b><span class="count-pill">${counts[l]}</span></div>`;
+  el("legend").innerHTML = html;
+}
+function paint() {
+  if (!lastResult) return;
+  el("viewBox").innerHTML = currentView === "masked" ? renderMasked(lastResult) : renderHighlight(lastResult);
+  el("copyBtn").style.display = currentView === "masked" ? "inline-block" : "none";
+  renderLegend(lastResult);
+}
+
+// ── события ──────────────────────────────────────────────────────────────────
+function setStatus(msg, isErr) {
+  const s = el("status"); s.textContent = msg; s.className = "status" + (isErr ? " err" : "");
+}
+async function detect() {
+  const text = el("input").value;
+  if (!text.trim()) { setStatus("Введите текст для анализа.", true); return; }
+  el("detectBtn").disabled = true;
+  try {
+    lastResult = await runDetect(text);
+    el("result").style.display = "block";
+    paint();
+    const n = lastResult.entities.length;
+    setStatus(n ? `Готово — найдено сущностей: ${n}.` : "Готово — персональные данные не обнаружены.");
+  } catch (err) {
+    el("bar").style.display = "none";
+    setStatus("Ошибка: " + (err?.message || err), true);
+    console.error(err);
+  } finally {
+    el("detectBtn").disabled = false;
+  }
+}
+
+el("detectBtn").onclick = detect;
+el("sampleBtn").onclick = () => { el("input").value = SAMPLE; el("input").focus(); };
+el("clearBtn").onclick = () => {
+  el("input").value = ""; lastResult = null; el("result").style.display = "none"; setStatus("");
+};
+el("seg").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-view]"); if (!b) return;
+  currentView = b.dataset.view;
+  for (const x of el("seg").children) x.classList.toggle("active", x === b);
+  paint();
+});
+el("copyBtn").onclick = async () => {
+  if (!lastResult) return;
+  try {
+    await navigator.clipboard.writeText(lastResult.masked);
+    el("copyBtn").textContent = "Скопировано ✓"; el("copyBtn").classList.add("copied");
+    setTimeout(() => { el("copyBtn").textContent = "Копировать"; el("copyBtn").classList.remove("copied"); }, 1500);
+  } catch { setStatus("Не удалось скопировать в буфер обмена.", true); }
+};
+el("input").addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") detect();
+});
+
+if (!MODEL_ID || MODEL_ID.includes("YOUR_HF_USER")) {
+  // показываем подсказку только если MODEL_ID не настроен (например, после форка)
+  el("setupNotice").style.display = "block";
+}
+</script>
+</body>
+</html>

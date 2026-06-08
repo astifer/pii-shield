@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PII Shield — поиск и маскирование персональных данных</title>
+<style>
+  :root {
+    --bg: #0f1420;
+    --panel: #171d2b;
+    --panel-2: #1e2636;
+    --border: #2a3346;
+    --text: #e6ebf5;
+    --muted: #8b97ad;
+    --accent: #5b8cff;
+    --accent-2: #3f6fe0;
+    --danger: #ff6b6b;
+    --ok: #3ddc84;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(1200px 600px at 80% -10%, #1c2740 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 32px 20px 64px; }
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+  .logo {
+    width: 42px; height: 42px; border-radius: 11px; flex: none;
+    background: linear-gradient(135deg, var(--accent), #7b5bff);
+    display: grid; place-items: center; font-size: 22px;
+    box-shadow: 0 6px 20px rgba(91,140,255,.35);
+  }
+  h1 { font-size: 22px; margin: 0; letter-spacing: .2px; }
+  .sub { color: var(--muted); font-size: 13.5px; margin: 2px 0 24px; }
+  .sub b { color: var(--text); font-weight: 600; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 18px;
+  }
+  textarea {
+    width: 100%; min-height: 170px; resize: vertical;
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; font-size: 15px; line-height: 1.55;
+    font-family: inherit; outline: none;
+  }
+  textarea:focus { border-color: var(--accent); }
+
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px; }
+  button {
+    font: inherit; cursor: pointer; border-radius: 9px; padding: 10px 16px;
+    border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+    transition: transform .05s ease, background .15s ease, border-color .15s ease;
+  }
+  button:hover { border-color: var(--accent); }
+  button:active { transform: translateY(1px); }
+  button.primary { background: var(--accent-2); border-color: var(--accent-2); font-weight: 600; }
+  button.primary:hover { background: var(--accent); }
+  button:disabled { opacity: .5; cursor: progress; }
+  .spacer { flex: 1; }
+  .link { background: none; border: none; color: var(--muted); padding: 8px; }
+  .link:hover { color: var(--text); }
+
+  .status { color: var(--muted); font-size: 13px; min-height: 18px; margin: 14px 2px 0; }
+  .status.err { color: var(--danger); }
+
+  .result { margin-top: 18px; display: none; }
+  .seg {
+    display: inline-flex; background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 9px; padding: 3px; gap: 3px; margin-bottom: 14px;
+  }
+  .seg button {
+    border: none; background: transparent; padding: 7px 14px; border-radius: 7px;
+    color: var(--muted); font-size: 13.5px;
+  }
+  .seg button.active { background: var(--accent-2); color: #fff; }
+
+  .view { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+          padding: 16px 18px; white-space: pre-wrap; word-wrap: break-word;
+          font-size: 15px; line-height: 1.9; }
+  .view.mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 14px; line-height: 1.7; }
+
+  mark {
+    border-radius: 5px; padding: 1px 4px; color: #fff; cursor: default;
+    position: relative; white-space: pre-wrap;
+  }
+  mark .tag {
+    font-size: 10px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase;
+    opacity: .9; margin-left: 5px; vertical-align: middle;
+  }
+  .mask-tok { color: var(--accent); font-weight: 700; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px;
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 20px; padding: 4px 11px 4px 8px; color: var(--muted);
+  }
+  .dot { width: 11px; height: 11px; border-radius: 50%; flex: none; }
+  .chip b { color: var(--text); font-weight: 600; }
+  .count-pill {
+    background: var(--border); color: var(--text); border-radius: 10px;
+    font-size: 11px; padding: 0 7px; font-weight: 700;
+  }
+
+  .empty { color: var(--muted); font-style: italic; }
+  .copied { color: var(--ok) !important; }
+  footer { margin-top: 28px; color: var(--muted); font-size: 12px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">🛡️</div>
+    <div>
+      <h1>PII Shield</h1>
+    </div>
+  </header>
+  <div class="sub">
+    Находит <b>персональные данные</b> в русском тексте (30 типов: ФИО, телефоны, паспорта,
+    карты, СНИЛС, адреса и др.) на основе дообученной NER-модели <b>ruModernBERT</b> и маскирует их.
+  </div>
+
+  <div class="card">
+    <textarea id="input" placeholder="Вставьте текст с персональными данными…"></textarea>
+    <div class="toolbar">
+      <button class="primary" id="detectBtn">Найти PII</button>
+      <button id="sampleBtn">Вставить пример</button>
+      <button class="link" id="clearBtn">Очистить</button>
+      <div class="spacer"></div>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="result card" id="result">
+    <div class="seg" id="seg">
+      <button data-view="highlight" class="active">Подсветка</button>
+      <button data-view="masked">Маскированный текст</button>
+    </div>
+    <button id="copyBtn" style="float:right; display:none;">Копировать</button>
+    <div id="viewBox"></div>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <footer>Текст обрабатывается локально на вашей машине — никуда не отправляется.</footer>
+</div>
+
+<script>
+const SAMPLE = `Здравствуйте! Меня зовут Иванова Мария Сергеевна, дата рождения 14.03.1991.
+Мой телефон +7 (916) 555-21-43, email maria.ivanova@example.com.
+Паспорт 4509 №123456 выдан 20.05.2015. СНИЛС 112-233-445 95.
+Карта 4276 3801 2345 6789, срок 08/27, CVV 123, держатель MARIA IVANOVA.
+Адрес регистрации: г. Москва, ул. Тверская, д. 10, кв. 5. ИНН 770812345678.`;
+
+const el = (id) => document.getElementById(id);
+let lastResult = null;
+let currentView = "highlight";
+
+// Deterministic color per entity label.
+function colorFor(label) {
+  let h = 0;
+  for (let i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) % 360;
+  return `hsl(${h}, 62%, 48%)`;
+}
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, (c) => (
+    {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]
+  ));
+}
+
+function renderHighlight(res) {
+  if (!res.entities.length) {
+    return `<div class="view"><span class="empty">Персональные данные не найдены.</span></div>`;
+  }
+  const t = res.text;
+  let html = "", cursor = 0;
+  for (const e of res.entities) {
+    html += escapeHtml(t.slice(cursor, e.start));
+    const c = colorFor(e.label);
+    html += `<mark style="background:${c}" title="${escapeHtml(e.label)} · ${(e.confidence*100).toFixed(0)}%">`
+          + escapeHtml(t.slice(e.start, e.end))
+          + `<span class="tag">${escapeHtml(e.mask.replace(/[\[\]]/g,""))}</span></mark>`;
+    cursor = e.end;
+  }
+  html += escapeHtml(t.slice(cursor));
+  return `<div class="view">${html}</div>`;
+}
+
+function renderMasked(res) {
+  if (!res.entities.length) {
+    return `<div class="view mono"><span class="empty">Маскировать нечего — PII не найдены.</span></div>`;
+  }
+  const masked = escapeHtml(res.masked).replace(/\[([^\]]+)\]/g, '<span class="mask-tok">[$1]</span>');
+  return `<div class="view mono">${masked}</div>`;
+}
+
+function renderLegend(res) {
+  const counts = res.counts || {};
+  const labels = Object.keys(counts).sort();
+  if (!labels.length) { el("legend").innerHTML = ""; return; }
+  const total = labels.reduce((s, l) => s + counts[l], 0);
+  let html = `<div class="chip"><b>Найдено: ${total}</b></div>`;
+  for (const l of labels) {
+    html += `<div class="chip"><span class="dot" style="background:${colorFor(l)}"></span>`
+          + `<b>${escapeHtml(l)}</b><span class="count-pill">${counts[l]}</span></div>`;
+  }
+  el("legend").innerHTML = html;
+}
+
+function paint() {
+  if (!lastResult) return;
+  el("viewBox").innerHTML = currentView === "masked"
+    ? renderMasked(lastResult)
+    : renderHighlight(lastResult);
+  el("copyBtn").style.display = currentView === "masked" ? "inline-block" : "none";
+  renderLegend(lastResult);
+}
+
+async function detect() {
+  const text = el("input").value;
+  if (!text.trim()) { setStatus("Введите текст для анализа.", true); return; }
+  setStatus("Анализ…");
+  el("detectBtn").disabled = true;
+  try {
+    const r = await fetch("/api/detect", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ text, threshold: 0.5 }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || ("HTTP " + r.status));
+    lastResult = data;
+    el("result").style.display = "block";
+    paint();
+    const n = data.entities.length;
+    setStatus(n ? `Готово — найдено сущностей: ${n}.` : "Готово — персональные данные не обнаружены.");
+  } catch (err) {
+    setStatus("Ошибка: " + err.message, true);
+  } finally {
+    el("detectBtn").disabled = false;
+  }
+}
+
+function setStatus(msg, isErr) {
+  const s = el("status");
+  s.textContent = msg;
+  s.className = "status" + (isErr ? " err" : "");
+}
+
+// --- events ---
+el("detectBtn").onclick = detect;
+el("sampleBtn").onclick = () => { el("input").value = SAMPLE; el("input").focus(); };
+el("clearBtn").onclick = () => {
+  el("input").value = ""; lastResult = null;
+  el("result").style.display = "none"; setStatus("");
+};
+el("seg").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-view]");
+  if (!b) return;
+  currentView = b.dataset.view;
+  for (const x of el("seg").children) x.classList.toggle("active", x === b);
+  paint();
+});
+el("copyBtn").onclick = async () => {
+  if (!lastResult) return;
+  try {
+    await navigator.clipboard.writeText(lastResult.masked);
+    el("copyBtn").textContent = "Скопировано ✓";
+    el("copyBtn").classList.add("copied");
+    setTimeout(() => { el("copyBtn").textContent = "Копировать"; el("copyBtn").classList.remove("copied"); }, 1500);
+  } catch { setStatus("Не удалось скопировать в буфер обмена.", true); }
+};
+// Ctrl/Cmd+Enter to detect
+el("input").addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") detect();
+});
+</script>
+</body>
+</html>

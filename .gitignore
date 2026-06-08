@@ -1,3 +1,9 @@
 .venv
 __pycache__
 .DS_Store
+.claude
+data
+models
+ner_model_final
+ner_model_fold1
+web_model
