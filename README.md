@@ -1,123 +1,122 @@
-# PII NER + Browser Shield
+# 🛡️ PII Shield
 
-Russian **PII named-entity recognition** for the *llm-march2026-alfabank* ("PII Shield")
-competition. Given a Russian text, predict character spans `[(start, end, label), ...]`
-over **29 PII entity types** (ФИО, Номер карты, СНИЛС, паспортные данные, …).
+**Находит и прячет персональные данные в русском тексте.**
 
-This repo has two halves:
+Вставляете текст — приложение подсвечивает всё личное (ФИО, телефоны, паспорта, банковские
+карты, СНИЛС, адреса и т.д.) и одной кнопкой заменяет это на безопасные метки вроде
+`[ТЕЛЕФОН]` или `[ФИО]`. Удобно, когда нужно поделиться текстом, перепиской или документом,
+не раскрывая чужие данные.
 
-1. **Training pipeline** (`src/pii_ner/`) — a probability-blended ensemble of
-   token-classification models (`DeepPavlov/rubert-base-cased` and a conversational
-   ruBERT) with an uncertainty-mining self-training loop.
-2. **Browser demo** (`web/` + `pii_ner.web`) — runs a trained model **on-device via
-   WebGPU** (transformers.js), obfuscates every detected PII span (`[ФИО]`,
-   `[ПОЛНЫЙ_АДРЕС]`, …) **before** the text is sent to an LLM. The backend LLM is a
-   FastAPI mock that echoes the obfuscated message, so raw PII never leaves the browser.
+## Как пользоваться
 
-## Install
+1. Откройте сайт: **https://astifer.github.io/pii-shield/**
+2. Вставьте свой текст в поле (или нажмите **«Вставить пример»**, чтобы попробовать).
+3. Нажмите **«Найти PII»** — все персональные данные подсветятся цветом.
+4. Чтобы их скрыть, переключитесь на вкладку **«Маскированный текст»** и нажмите
+   **«Копировать»** — получите очищенный текст, готовый к отправке.
 
-Uses [`uv`](https://docs.astral.sh/uv/). The package installs on first `uv run`:
+> При самом первом запуске приложение один раз скачивает модель (~150 МБ) — это занимает
+> несколько секунд. Дальше всё работает быстро.
 
-```bash
-uv sync                                   # training deps only
-uv sync --extra web --extra export --extra dev   # + browser demo, ONNX export, tests
-```
+## Пример
 
-## Data
+**Было:**
+> Меня зовут Иванова Мария, телефон +7 916 555-21-43, почта maria@example.com.
 
-Place the competition files under `data/` (gitignored):
+**Стало:**
+> Меня зовут [ФИО], телефон [ТЕЛЕФОН], почта [EMAIL].
 
-- `data/train_dataset.tsv` — columns `text` / `target` / `entity`, where `target` is a
-  stringified `[(start, end, label), ...]`.
-- `data/private_test_dataset.csv` — columns `id` / `text`.
+![alt](docs/img.png)
 
-## Training usage
+## Это безопасно?
 
-Console commands (run via `uv run`):
+**Да.** Текст никуда не отправляется. Модель работает прямо в вашем браузере, на вашем
+устройстве — ничего не уходит на сервер и нигде не сохраняется.
 
-```bash
-# Train k-fold models (resumable — skips folds with an existing checkpoint)
-uv run pii-train --model DeepPavlov/rubert-base-cased --folds 3
+## Что приложение умеет находить
 
-# ...plus uncertainty mining + augmented retrain on confident pseudo-labels
-uv run pii-train --model DeepPavlov/rubert-base-cased --folds 3 --mine
+Всего 30 видов личных данных, в том числе:
 
-# Out-of-fold span-level P/R/F1 with a per-label breakdown
-uv run pii-evaluate --model-dirs ner_model_rubert-base-cased_fold{1,2,3} --oof --folds 3 --per-label
+- **Личность:** ФИО, дата и место рождения, гражданство
+- **Контакты:** телефон, email, полный адрес, адрес регистрации
+- **Документы:** паспорт, СНИЛС, ИНН, водительское удостоверение, ВНЖ, виза,
+  свидетельство о рождении
+- **Банк и карты:** номер карты, срок действия, CVV, имя держателя, номер счёта,
+  название банка
+- **Секреты:** пароли, ПИН-коды, одноразовые коды, API-ключи, кодовые слова
+- **Организации и авто:** данные о компании, данные об автомобиле
 
-# Blend any set of checkpoints into submission.csv
-uv run pii-blend --model-dirs ner_model_rubert-base-cased_fold1 ner_model_rubert-base-cased_augmented \
-                 --output submission.csv
-```
+## Что-то не работает?
 
-Full train → mine → evaluate → blend flow across two GPUs: `./scripts/run_pipeline.sh`.
+- Если после нажатия «Найти PII» появляется ошибка загрузки модели — обновите страницу,
+  возможно, модель ещё докачивается.
+- Нужен современный браузер (Chrome, Edge, Firefox, Safari) и интернет для **первой**
+  загрузки модели.
+- Модель не идеальна: иногда может пропустить редкое имя или захватить лишнее слово.
+  Перед отправкой важного текста перепроверьте результат глазами.
 
-**Key invariant:** models are ensembled by averaging their **raw softmax arrays**, so
-every caller decodes through the same functions in `inference.py` (`MAX_LENGTH=512`,
-`THRESHOLD=0.6`). Don't fork that logic.
+---
 
-## Browser demo (WebGPU)
+<details>
+<summary><b>Для разработчиков</b> (как это устроено, запуск локально, обучение)</summary>
 
-```bash
-uv sync --extra web --extra export
+Под капотом — дообученная NER-модель **ruModernBERT** (30 типов PII, BIO-разметка, 61 метка).
+На сайте она запускается прямо в браузере через
+[transformers.js](https://github.com/huggingface/transformers.js): статика лежит на GitHub
+Pages (`docs/`), ONNX-веса — на Hugging Face Hub (`astifer/pii-shield-onnx`).
 
-# 1. Export a model to ONNX int8 for transformers.js.
-#    Scaffold (untrained head) — the demo runs immediately, predictions are random:
-uv run pii-export-onnx --scaffold
-#    Or a REAL trained checkpoint (real entity detection, no frontend changes):
-uv run pii-export-onnx --model-dir ner_model_rubert-base-cased_augmented
-
-# 2. Serve it.
-uv run pii-serve            # http://127.0.0.1:8000/
-```
-
-What you get: a one-time model **download progress bar** → on-device NER → per-message
-**inference time in ms**, with detected entities **highlighted in red** and replaced by
-their `[TAG]` in the message sent to the mock LLM.
-
-- `pii-export-onnx` writes `web/models/pii-ner-rubert/onnx/model_quantized.onnx` (int8,
-  with an fp32 fallback) plus the tokenizer/config, and regenerates
-  `web/labels.generated.js` (the entity→tag map) from `pii_ner.labels` so the frontend
-  can never drift from the trained label set.
-- The mock LLM is `pii_ner.web.server.mock_llm` — swap in a real call there; the contract
-  (obfuscated text in, HTML fragment out) is unchanged.
-
-## Tests & benchmark
+### Запустить локально (Python-сервер)
 
 ```bash
-uv run pytest tests/                       # FastAPI backend + label-tag coverage
-node --test web/obfuscate.test.js          # pure entity logic (merge/highlight/obfuscate)
-uv run python benchmark_onnx.py            # ONNX inference latency + throughput (int8 vs fp32)
+unzip ner_model_final.zip          # -> ./ner_model_final/
+python server.py --preload         # откройте http://127.0.0.1:8000
 ```
 
-`benchmark_onnx.py` reports per-sentence latency percentiles and tokens/sec on CPU
-onnxruntime (server-side analog of the browser's "ms" readout; the demo itself uses
-WebGPU). Use it for regression tracking and quantization comparison.
+| Файл | Назначение |
+|---|---|
+| `server.py` | HTTP-сервер на стандартной библиотеке (отдаёт UI и `POST /api/detect`) |
+| `infer.py` | Загрузка модели + инференс (BIO-декодинг, чистка спанов, маскирование) |
+| `static/index.html` | Локальный фронтенд (общается с сервером) |
+| `docs/index.html` | Браузерный фронтенд для GitHub Pages (transformers.js + ONNX) |
+| `convert_to_onnx.py` | Конвертация модели в ONNX для браузера |
+| `train.py` / `postprocessing.py` | Обучение и постобработка предсказаний |
 
-## Architecture
+### Выложить на GitHub Pages
 
+```bash
+# 1. Конвертация в ONNX (нужна сеть)
+pip install "optimum[onnxruntime]>=1.24"
+python convert_to_onnx.py          # -> ./web_model/
+
+# 2. Загрузка весов на Hugging Face Hub (репозиторий public)
+hf upload astifer/pii-shield-onnx ./web_model .
+
+# 3. Запушить docs/ и включить Pages
+git add docs && git commit -m "Deploy PII Shield to Pages" && git push
 ```
-src/pii_ner/
-  labels.py          BIO label schema — single source of truth for label<->id (29 types)
-  config.py          paths, decoding thresholds, training hyperparameters
-  data.py            TSV/CSV loading, char-span -> BIO token alignment, NERDataset
-  inference.py       softmax extraction, probability blending, BIO decoding
-  metrics.py         token-level (Trainer) and span-level (eval) P/R/F1
-  mining.py          OOF / blended uncertainty mining
-  training.py        per-fold fine-tuning + pseudo-label augmented retraining
-  postprocessing.py  submission span cleanup (boundary expansion, overlaps, …)
-  ema.py             optional EMA-smoothed weights (`--ema`)
-  export_onnx.py     export a checkpoint -> ONNX int8 for the browser + labels.generated.js
-  cli/               thin argparse entry points (train/evaluate/blend/mine/export/serve)
-  web/server.py      FastAPI mock-LLM backend + static serving
-web/                 transformers.js + WebGPU frontend (index.html, app.js, obfuscate.js)
+
+Затем в GitHub: **Settings → Pages → Deploy from a branch → `main` / `/docs`**.
+`MODEL_ID` в `docs/index.html` уже указывает на `astifer/pii-shield-onnx`.
+Версии: `optimum ≥ 1.24` (экспорт ModernBERT), `@huggingface/transformers` 3.x (с CDN).
+
+### Обучение
+
+```bash
+pip install -r requirements.txt
+python train.py                    # параметры — в TrainConfig внутри train.py
 ```
 
-## Notes
+Заложенные практики: 5-fold CV с усреднением вероятностей, EMA весов (decay 0.995),
+cosine-расписание с warmup, label smoothing 0.1, class-weighted loss, gradient checkpointing,
+mixed precision, опциональный pseudo-labeling. Датасеты — в `data/`.
 
-- Checkpoints (`ner_model_*/`), data, pipeline CSVs, and the exported `web/models/` are
-  gitignored — build artifacts, regenerated by the commands above.
-- Scaffold export uses an **untrained** classification head: the architecture, tokenizer
-  and 59-BIO label set match a real checkpoint, so swapping in a trained model
-  (`pii-export-onnx --model-dir …`) needs no frontend or test changes — only *which*
-  tokens fire becomes meaningful.
+**Полный список 30 типов:** API ключи, CVV/CVC, Email, Водительское удостоверение, Временное
+удостоверение личности, Гражданство и названия стран, Данные об автомобиле клиента, Данные об
+организации/юридическом лице, Дата окончания срока действия карты, Дата регистрации по месту
+жительства или пребывания, Дата рождения, Имя держателя карты, Кодовые слова, Место рождения,
+Наименование банка, Номер банковского счета, Номер карты, Номер телефона, Одноразовые коды,
+ПИН код, Пароли, Паспортные данные, Полный адрес, Разрешение на работу / визу, СНИЛС клиента,
+Сведения об ИНН, Свидетельство о рождении, Серия и номер вида на жительство, Содержимое
+магнитной полосы, ФИО.
+
+</details>
