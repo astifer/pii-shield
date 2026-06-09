@@ -41,6 +41,9 @@ web_model/
 legacy/
 legacy_data/
 
-# Local agent guidance, not part of the project
-.claude
+# Claude Code / agent files (local, not part of the project)
+.claude/
+.claude.json
+.claude.json.backup
 CLAUDE.md
+CLAUDE.local.md

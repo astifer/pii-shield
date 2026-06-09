@@ -1,0 +1,9 @@
+# Run `pre-commit install` once; hooks then run on `git commit`.
+# Lint + format the whole repo manually with: `pre-commit run --all-files`.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.16
+    hooks:
+      - id: ruff          # linter (autofixes what it can)
+        args: [--fix]
+      - id: ruff-format   # formatter
