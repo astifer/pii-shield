@@ -79,7 +79,7 @@ python server.py --preload         # откройте http://127.0.0.1:8000
 | `static/index.html` | Локальный фронтенд (общается с сервером) |
 | `docs/index.html` | Браузерный фронтенд для GitHub Pages (transformers.js + ONNX) |
 | `convert_to_onnx.py` | Конвертация модели в ONNX для браузера |
-| `train.py` / `postprocessing.py` | Обучение и постобработка предсказаний |
+| `src/pii_ner/` | Пакет: обучение (`pii-train`), инференс, постобработка, ONNX-экспорт |
 
 ### Выложить на GitHub Pages
 
@@ -102,13 +102,13 @@ git add docs && git commit -m "Deploy PII Shield to Pages" && git push
 ### Обучение
 
 ```bash
-pip install -r requirements.txt
-python train.py                    # параметры — в TrainConfig внутри train.py
+uv sync                            # установка зависимостей
+uv run pii-train                   # параметры — в src/pii_ner/config.py; флаги --folds/--ema/--mine
 ```
 
-Заложенные практики: 5-fold CV с усреднением вероятностей, EMA весов (decay 0.995),
-cosine-расписание с warmup, label smoothing 0.1, class-weighted loss, gradient checkpointing,
-mixed precision, опциональный pseudo-labeling. Датасеты — в `data/`.
+Заложенные практики: 3-fold CV с усреднением вероятностей, линейное расписание с warmup,
+label smoothing 0.1, mixed precision (fp16), опциональные EMA весов (decay 0.999) и
+pseudo-labeling. Датасеты — в `data/`.
 
 **Полный список 30 типов:** API ключи, CVV/CVC, Email, Водительское удостоверение, Временное
 удостоверение личности, Гражданство и названия стран, Данные об автомобиле клиента, Данные об
